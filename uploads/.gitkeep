@@ -1,0 +1,3 @@
+# This directory stores uploaded files (profile photos, CVs, etc.).
+# Ensure the web server has write permissions to this directory.
+# Files are NOT stored in MySQL; only file paths/URLs are stored in the database.
