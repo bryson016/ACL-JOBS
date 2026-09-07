@@ -1,0 +1,30 @@
+# Backend (Node.js / Express) ignores
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Local env overrides (the PHP .env is kept intentionally — see README)
+.env.local
+.env.*.local
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Uploads directory — keep the folder + .gitkeep, ignore content
+uploads/files/
+uploads/profile_photo/*
+uploads/cv/*
+!uploads/profile_photo/.gitkeep
+!uploads/cv/.gitkeep

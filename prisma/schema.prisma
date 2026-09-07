@@ -1,0 +1,283 @@
+// ACL Jobs / Advenware Career Link — Prisma schema.
+//
+// IMPORTANT: this schema mirrors the existing MySQL database exactly.
+// The tables were created by `backend/acl_jobs.sql` and contain live
+// user data. DO NOT run `prisma migrate dev` or `prisma db push` against
+// this schema — that would attempt to recreate or alter tables.
+//
+// The only Prisma commands you should run with this schema are:
+//   - prisma generate         (regenerate the typed client)
+//   - prisma db pull          (re-introspect live DB if columns change)
+//
+// All queries use Prisma's generated client; raw SQL via
+// `prisma.$queryRaw` is used only where Prisma's typed query builder
+// cannot express a needed query (e.g. dynamic WHERE clause building).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Users
+// ============================================================
+enum UserRole {
+  job_seeker
+  employer
+  admin
+}
+
+model users {
+  id         Int       @id @default(autoincrement()) @db.UnsignedInt
+  username   String    @unique @db.VarChar(50)
+  email      String    @unique @db.VarChar(255)
+  password   String    @db.VarChar(255)
+  role       UserRole  @default(job_seeker)
+  is_active  Int       @default(1) @db.TinyInt
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now()) @updatedAt
+
+  company       companies?
+  profile       profiles?
+  auth_tokens   auth_tokens[]
+  applications  applications[]
+  notifications notifications[]
+  interviews    interviews[]
+
+  @@index([role])
+  @@index([is_active])
+}
+
+// ============================================================
+// Companies
+// ============================================================
+model companies {
+  id          Int      @id @default(autoincrement()) @db.UnsignedInt
+  user_id     Int      @unique @db.UnsignedInt
+  name        String   @db.VarChar(255)
+  slug        String   @unique @db.VarChar(255)
+  description String?  @db.Text
+  website     String?  @db.VarChar(255)
+  email       String?  @db.VarChar(255)
+  phone       String?  @db.VarChar(50)
+  address     String?  @db.Text
+  logo        String?  @db.VarChar(500)
+  industry    String?  @db.VarChar(100)
+  size        String?  @db.VarChar(50)
+  is_active   Int      @default(1) @db.TinyInt
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
+
+  user       users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobs       jobs[]
+  interviews interviews[]
+
+  @@index([name])
+}
+
+// ============================================================
+// Profiles
+// ============================================================
+model profiles {
+  id                 Int      @id @default(autoincrement()) @db.UnsignedInt
+  user_id            Int      @unique @db.UnsignedInt
+  full_name          String   @db.VarChar(255)
+  username           String?  @db.VarChar(50)
+  email              String?  @db.VarChar(255)
+  phone              String?  @db.VarChar(50)
+  location           String?  @db.VarChar(255)
+  bio                String?  @db.Text
+  skills             String?  @db.Text
+  education          String?  @db.Text
+  experience         String?  @db.Text
+  professional_title String?  @db.VarChar(255)
+  years_of_experience String? @db.VarChar(50)
+  employment_type    String?  @db.VarChar(50)
+  work_preference    String?  @db.VarChar(50)
+  expected_salary    String?  @db.VarChar(255)
+  career_objective   String?  @db.Text
+  profile_photo      String?  @db.VarChar(500)
+  cv_url             String?  @db.VarChar(500)
+  profile_completion Int      @default(0) @db.UnsignedInt
+  created_at         DateTime @default(now())
+  updated_at         DateTime @default(now()) @updatedAt
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([full_name])
+}
+
+// ============================================================
+// Jobs
+// ============================================================
+enum JobStatus {
+  active
+  closed
+  draft
+  archived
+}
+
+model jobs {
+  id              Int       @id @default(autoincrement()) @db.UnsignedInt
+  company_id      Int       @db.UnsignedInt
+  title           String    @db.VarChar(255)
+  description     String    @db.Text
+  location        String    @db.VarChar(255)
+  category        String?   @db.VarChar(100)
+  employment_type String    @db.VarChar(50)
+  salary          String?   @db.VarChar(255)
+  requirements    String?   @db.Text
+  status          JobStatus @default(active)
+  is_featured     Int       @default(0) @db.TinyInt
+  views_count     Int       @default(0) @db.UnsignedInt
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now()) @updatedAt
+
+  company      companies       @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  applications applications[]
+  saved_jobs   saved_jobs[]
+  interviews   interviews[]
+
+  @@index([company_id])
+  @@index([status])
+  @@index([is_featured])
+  @@index([category])
+  @@index([location])
+  @@index([employment_type])
+}
+
+// ============================================================
+// Applications
+// ============================================================
+enum ApplicationStatus {
+  pending
+  reviewing
+  shortlisted
+  interview
+  accepted
+  rejected
+  withdrawn
+}
+
+model applications {
+  id           Int               @id @default(autoincrement()) @db.UnsignedInt
+  user_id      Int               @db.UnsignedInt
+  job_id       Int               @db.UnsignedInt
+  status       ApplicationStatus @default(pending)
+  cover_letter String?           @db.Text
+  cv_url       String?           @db.VarChar(500)
+  applied_at   DateTime          @default(now())
+  updated_at   DateTime          @default(now()) @updatedAt
+
+  job         jobs          @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user        users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  interviews  interviews[]
+
+  @@unique([user_id, job_id])
+  @@index([user_id])
+  @@index([job_id])
+  @@index([status])
+  @@index([applied_at])
+}
+
+// ============================================================
+// Saved jobs
+// ============================================================
+model saved_jobs {
+  id       Int      @id @default(autoincrement()) @db.UnsignedInt
+  user_id  Int      @db.UnsignedInt
+  job_id   Int      @db.UnsignedInt
+  saved_at DateTime @default(now())
+
+  job jobs @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([user_id, job_id])
+  @@index([user_id])
+  @@index([job_id])
+}
+
+// ============================================================
+// Interviews
+// ============================================================
+enum InterviewStatus {
+  scheduled
+  completed
+  cancelled
+  rescheduled
+}
+
+model interviews {
+  id             Int              @id @default(autoincrement()) @db.UnsignedInt
+  application_id Int              @db.UnsignedInt
+  job_id         Int              @db.UnsignedInt
+  user_id        Int              @db.UnsignedInt
+  company_id     Int              @db.UnsignedInt
+  title          String           @db.VarChar(255)
+  description    String?          @db.Text
+  scheduled_at   DateTime
+  duration       Int              @default(60) @db.UnsignedInt
+  location       String?          @db.VarChar(255)
+  meeting_link   String?          @db.VarChar(500)
+  status         InterviewStatus  @default(scheduled)
+  notes          String?          @db.Text
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @default(now()) @updatedAt
+
+  application applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  job         jobs         @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  company     companies    @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user        users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([application_id])
+  @@index([job_id])
+  @@index([user_id])
+  @@index([company_id])
+  @@index([scheduled_at])
+  @@index([status])
+}
+
+// ============================================================
+// Notifications
+// ============================================================
+model notifications {
+  id         Int      @id @default(autoincrement()) @db.UnsignedInt
+  user_id    Int      @db.UnsignedInt
+  type       String   @db.VarChar(100)
+  title      String   @db.VarChar(255)
+  message    String   @db.Text
+  data       Json?
+  is_read    Int      @default(0) @db.TinyInt
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([user_id])
+  @@index([is_read])
+  @@index([type])
+  @@index([created_at])
+}
+
+// ============================================================
+// Auth tokens
+// ============================================================
+model auth_tokens {
+  id           Int      @id @default(autoincrement()) @db.UnsignedInt
+  user_id      Int      @db.UnsignedInt
+  token        String   @db.VarChar(500)
+  token_hash   String   @unique @db.VarChar(255)
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+  last_used_at DateTime?
+  is_revoked   Int      @default(0) @db.TinyInt
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@index([is_revoked])
+}
