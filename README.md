@@ -1,14 +1,18 @@
 # ACL Jobs API — Node.js / Express / Prisma
 
 This is the **only** backend for the project. It is written in
-**JavaScript** (Node.js + Express), uses **Prisma ORM** with a
+**JavaScript** (Node.js + Express) and uses **Prisma ORM** with a
 **Prisma schema** ([`prisma/schema.prisma`](prisma/schema.prisma:1)) for all
-database access, and talks to the existing MySQL `acl_jobs` database.
+database access.
 
 **There is no PHP in this project.** Every PHP file that previously lived
-under `backend/` has been removed; the schema it created is now mirrored
-read-only by the Prisma schema. Existing data, users, and roles are
-preserved exactly as they were.
+under `backend/` has been removed.
+
+**The default database is SQLite** (a local file at
+`backend/acl_jobs.db`), so the app works out of the box on any machine
+without needing a MySQL server. **MySQL is fully supported as a drop-in
+swap** — change two lines and you're on the original `acl_jobs` MySQL
+database. See [Database providers](#database-providers) below.
 
 The React Native client in `src/services/api.js` was not modified — it
 calls endpoints like `auth/login.php`, `jobs/get_jobs.php`,
@@ -25,17 +29,40 @@ Response shape is preserved:
 
 ---
 
+## Quick start (works immediately, no MySQL needed)
+
+```bash
+cd backend
+npm install
+npx prisma generate      # already runs automatically via postinstall
+npx prisma db push       # creates the local SQLite DB on first run
+npm start
+```
+
+Then open <http://localhost:5000>. You should see:
+
+```
+✅ Database connection OK.
+🚀 ACL Jobs API listening on http://0.0.0.0:5000
+   Database: configured via DATABASE_URL
+```
+
+The first user you register becomes the first account in the system.
+
+---
+
 ## Project layout
 
 ```
 backend/
 ├── server.js                  # Express entry point, mounts all routes
 ├── package.json               # Deps + npm start
-├── .env                       # DB / JWT / DATABASE_URL
+├── .env                       # DATABASE_URL + JWT_SECRET (+ optional PORT)
 ├── .gitignore
 ├── README.md                  # This file
+├── acl_jobs.db                # SQLite database (created on first run)
 ├── prisma/
-│   └── schema.prisma          # Read-only Prisma schema mirroring MySQL
+│   └── schema.prisma          # Prisma schema (SQLite default, MySQL-ready)
 ├── config/
 │   ├── database.js            # Prisma client (singleton)
 │   ├── auth.js                # Token generation/verification + middleware
@@ -63,8 +90,9 @@ backend/
 | Runtime          | Node.js (>= 18)                                            |
 | HTTP framework   | Express 4                                                 |
 | ORM              | Prisma 5 (`@prisma/client`)                               |
-| Database         | MySQL (existing `acl_jobs` database)                      |
-| Auth             | bcrypt password hashes + HMAC-SHA256 tokens (PHP-compatible) |
+| Database (default) | SQLite (file-based, no server required)                 |
+| Database (swap)  | MySQL — see [Database providers](#database-providers)     |
+| Auth             | bcrypt password hashes + HMAC-SHA256 tokens               |
 | File uploads     | multer (memory storage, 5 MB cap)                         |
 | CORS             | Hand-rolled middleware (same allowed-origin list as PHP)   |
 
@@ -76,29 +104,79 @@ generated Prisma client.
 ## Prisma schema
 
 [`prisma/schema.prisma`](prisma/schema.prisma:1) declares models for every
-existing table:
+table in the system:
 
 * `users`, `companies`, `profiles`, `jobs`, `applications`,
   `saved_jobs`, `interviews`, `notifications`, `auth_tokens`.
 
-The schema uses **`@map` table names** to match the existing
-`snake_case` MySQL tables exactly, and the column types / nullability /
-indexes mirror the original `acl_jobs.sql` definitions.
-
-**Important**: do **not** run `prisma migrate dev` or `prisma db push`
-against this schema. The live database already has the tables and data
-we need; the schema is a read-only mapping used purely to generate the
-typed client. The only Prisma commands you should run with this schema
-are:
-
-```bash
-npx prisma generate   # regenerate the typed client after edits
-npx prisma db pull    # re-introspect the live DB if columns change
-npx prisma format     # auto-format the schema
-```
+The schema is valid for **both SQLite and MySQL** (the two supported
+Prisma providers) — it uses plain Prisma types with no MySQL-only
+decorators, and the enum-like fields (`role`, `status`) are stored as
+`String` with documented value sets so the same schema validates on
+both providers.
 
 `postinstall` in `package.json` runs `prisma generate` automatically
 after `npm install`.
+
+---
+
+## Database providers
+
+The backend works with **two** Prisma providers. Switch by changing two
+lines.
+
+### Option A — SQLite (default, used in `backend/.env`)
+
+A local file `backend/acl_jobs.db` is created automatically. No server
+required — perfect for development and demoing the app on any machine.
+
+```env
+# backend/.env
+DATABASE_URL=file:./acl_jobs.db
+```
+
+```prisma
+// prisma/schema.prisma
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+```
+
+First run only:
+
+```bash
+npx prisma db push
+npm start
+```
+
+### Option B — MySQL (for production against the original database)
+
+Point at the original `acl_jobs` MySQL database the PHP backend used.
+
+```env
+# backend/.env
+DATABASE_URL=mysql://USER:PASSWORD@HOST:3306/acl_jobs
+```
+
+```prisma
+// prisma/schema.prisma
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+```
+
+After editing the provider, regenerate the client and create the
+tables (only needed once on a fresh DB):
+
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+Existing tables and data are preserved — Prisma only adds what's
+missing.
 
 ---
 
@@ -127,18 +205,17 @@ PHP produces, so the existing user passwords still log in.
 
 ## Environment variables
 
-Already set in `backend/.env`:
+Set in `backend/.env`:
 
-| Variable      | Purpose                                                                |
-| ------------- | ---------------------------------------------------------------------- |
-| `DB_HOST`     | MySQL host                                                             |
-| `DB_PORT`     | MySQL port                                                             |
-| `DB_USER`     | MySQL user                                                             |
-| `DB_PASSWORD` | MySQL password                                                         |
-| `DB_NAME`     | Database name (`acl_jobs`)                                             |
-| `DATABASE_URL`| `mysql://USER:PASSWORD@HOST:PORT/DATABASE` — used by Prisma           |
-| `JWT_SECRET`  | HMAC secret for signing tokens. **Change in production.**              |
-| `PORT`        | Server port (default `5000`, Render sets this automatically)           |
+| Variable       | Purpose                                                                                |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | Prisma connection string. Default `file:./acl_jobs.db` (SQLite). See [Database providers](#database-providers) for the MySQL form. |
+| `JWT_SECRET`   | HMAC secret for signing tokens. **Change in production.**                              |
+| `PORT`         | Server port (default `5000`, Render sets this automatically)                           |
+
+The `DATABASE_URL` value is the only database setting. Prisma reads it
+directly; there are no separate `DB_HOST` / `DB_USER` / `DB_PASSWORD`
+variables.
 
 ---
 
@@ -147,40 +224,81 @@ Already set in `backend/.env`:
 ```bash
 cd backend
 npm install      # also runs `prisma generate` via postinstall
+npx prisma db push   # only the first time, creates the SQLite DB
 npm start
 ```
 
 You should see:
 
 ```
-Database connection OK.
-ACL Jobs API listening on http://0.0.0.0:5000
+✅ Database connection OK.
+🚀 ACL Jobs API listening on http://0.0.0.0:5000
+   Database: configured via DATABASE_URL
 ```
 
-The frontend (`src/services/api.js`) currently expects the API at
-`http://localhost:5000/api` on web, `http://10.0.2.2:5000/api` on the
-Android emulator, or `http://<DEV_LAN_IP>:5000/api` on a physical
-device. Either set `EXPO_PUBLIC_API_BASE_URL` to that base URL, or just
-keep using the existing XAMPP/8080 config until you cut over.
+### How the frontend finds the API
+
+The frontend (`src/services/api.js`) automatically picks the right URL
+based on platform and build mode:
+
+| Build / platform       | API base URL                                  |
+| ---------------------- | --------------------------------------------- |
+| Web (dev)              | `http://localhost:5000/api`                   |
+| Web (prod build)       | `https://acl-jobs.onrender.com/api`           |
+| Android **emulator**   | `http://10.0.2.2:5000/api` (host loopback)    |
+| iOS simulator          | `http://localhost:5000/api`                   |
+| Physical device        | `http://<your-LAN-IP>:5000/api`               |
+
+`10.0.2.2` is the Android emulator's alias for the host machine's
+loopback — that's why the local server works from the emulator even
+though it binds to `127.0.0.1`.
+
+To override the URL for a custom build, set the
+`EXPO_PUBLIC_API_BASE_URL` env var before running `expo start` / `eas
+build`.
 
 ---
 
 ## Deploying to Render
 
+The repo includes a Render Blueprint at [`render.yaml`](../render.yaml:1)
+that creates a `acl-jobs-api` web service pre-configured for this
+project.
+
+### One-click deploy with the Blueprint
+
 1. Push this repo to GitHub.
-2. Render → **New Web Service** → pick the repo.
-3. Settings:
+2. Render dashboard → **New** → **Blueprint**.
+3. Pick the repo — Render reads `render.yaml` and provisions
+   `acl-jobs-api` with:
    - **Root Directory**: `backend`
-   - **Build Command**: `npm install` (runs `prisma generate` via `postinstall`)
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Health check**: `GET /`
+4. After it's created, open the service → **Environment** and set
+   - `JWT_SECRET` → a fresh long random string
+   - `DATABASE_URL` → either the SQLite default
+     `file:./acl_jobs.db` (fine for a quick demo — Render's free tier
+     has **no persistent disk**, so data will reset on every redeploy)
+     **or** the MySQL connection string to your real database
+     (recommended for production).
+5. Trigger a deploy. Once it's up, the API is reachable at
+   `https://acl-jobs.onrender.com/api/...` — exactly the URL the
+   frontend already uses.
+
+### Manual setup (without the Blueprint)
+
+1. Render → **New Web Service** → pick the repo.
+2. Settings:
+   - **Root Directory**: `backend`
+   - **Build Command**: `npm install`
    - **Start Command**: `npm start`
    - **Environment Variables**:
-     - `DATABASE_URL` (e.g. `mysql://user:pass@host:3306/acl_jobs`)
+     - `DATABASE_URL` (e.g. `file:./acl_jobs.db` or
+       `mysql://user:pass@host:3306/acl_jobs`)
      - `JWT_SECRET` (a fresh long random string)
-     - Any of the `DB_*` vars if you prefer those over `DATABASE_URL`.
-4. After first deploy, the API will be reachable at
-   `https://acl-jobs.onrender.com/api/...` — exactly where the frontend
-   already looks for it (`https://acl-jobs.onrender.com/api` is the
-   production fallback URL in `src/services/api.js`).
+3. After first deploy, the API will be reachable at
+   `https://<your-service>.onrender.com/api/...`.
 
 The server reads `process.env.PORT`, so it works with Render's automatic
 port assignment.
@@ -241,17 +359,31 @@ schema; it is never used to migrate or alter the database.
 
 ## Troubleshooting
 
-- **`Database connection failed` on boot** — check `DATABASE_URL` (and
-  the `DB_*` aliases) in `backend/.env`. Both forms are read.
+- **First-time setup: `acl_jobs.db does not exist`** — run
+  `npx prisma db push` once. It creates the SQLite file and all
+  tables. (Or `npx prisma generate` first if you haven't run
+  `npm install` yet.)
+- **Database not reachable on boot** — the server still starts and
+  serves every request. It logs a single friendly warning and prints
+  the current `DATABASE_URL` so you can see exactly which host:port
+  it is trying. Routes that touch the DB return a clean JSON
+  `503 { success: false, message: "Database temporarily unavailable.
+  Please try again shortly." }` instead of crashing. If you set
+  `DATABASE_URL` to a MySQL URL, make sure the MySQL server is running
+  and reachable.
+- **Switching to MySQL but seeing schema errors** — change **both** the
+  `provider` line in `prisma/schema.prisma` AND `DATABASE_URL` in
+  `backend/.env`, then run `npx prisma generate` and
+  `npx prisma db push` once.
 - **`Authentication required` for protected routes** — every protected
   endpoint expects `Authorization: Bearer <token>`. The frontend sends
   this automatically from `src/services/api.js`.
 - **Prisma client out of date after editing the schema** — run
   `npx prisma generate` (or `npm install` again, which triggers
   `postinstall`).
-- **File uploads return 413 (too large)** — multer is configured with a
-  5MB limit to match the original PHP setting
+- **File uploads return 413 (too large)** — multer is configured with
+  a 5MB limit to match the original PHP setting
   (`MAX_FILE_SIZE = 5 * 1024 * 1024`).
 - **CORS errors from the browser** — the allowed-origin list in
-  `config/cors.js` mirrors the original PHP list. Add your domain there
-  if you deploy under a new hostname.
+  `config/cors.js` mirrors the original PHP list. Add your domain
+  there if you deploy under a new hostname.

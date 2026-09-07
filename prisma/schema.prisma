@@ -1,43 +1,37 @@
 // ACL Jobs / Advenware Career Link — Prisma schema.
 //
-// IMPORTANT: this schema mirrors the existing MySQL database exactly.
-// The tables were created by `backend/acl_jobs.sql` and contain live
-// user data. DO NOT run `prisma migrate dev` or `prisma db push` against
-// this schema — that would attempt to recreate or alter tables.
+// Works with BOTH SQLite (default, for local dev / "just works" mode)
+// and MySQL (for production deployment against the original database).
 //
-// The only Prisma commands you should run with this schema are:
-//   - prisma generate         (regenerate the typed client)
-//   - prisma db pull          (re-introspect live DB if columns change)
+// To switch providers, change the `provider` line below AND the
+// DATABASE_URL in backend/.env:
+//   - SQLite: provider = "sqlite", DATABASE_URL="file:./acl_jobs.db"
+//   - MySQL : provider = "mysql",  DATABASE_URL="mysql://user:pass@host:3306/db"
 //
-// All queries use Prisma's generated client; raw SQL via
-// `prisma.$queryRaw` is used only where Prisma's typed query builder
-// cannot express a needed query (e.g. dynamic WHERE clause building).
+// Enums are represented as `String` with documented value sets so
+// the schema is valid for both providers. Application code passes
+// and compares the same string values ("job_seeker", "active", etc.).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 // ============================================================
 // Users
+//   role values: "job_seeker" | "employer" | "admin"
 // ============================================================
-enum UserRole {
-  job_seeker
-  employer
-  admin
-}
-
 model users {
-  id         Int       @id @default(autoincrement()) @db.UnsignedInt
-  username   String    @unique @db.VarChar(50)
-  email      String    @unique @db.VarChar(255)
-  password   String    @db.VarChar(255)
-  role       UserRole  @default(job_seeker)
-  is_active  Int       @default(1) @db.TinyInt
+  id         Int       @id @default(autoincrement())
+  username   String    @unique
+  email      String    @unique
+  password   String
+  role       String    @default("job_seeker")
+  is_active  Int       @default(1)
   created_at DateTime  @default(now())
   updated_at DateTime  @default(now()) @updatedAt
 
@@ -56,19 +50,19 @@ model users {
 // Companies
 // ============================================================
 model companies {
-  id          Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id     Int      @unique @db.UnsignedInt
-  name        String   @db.VarChar(255)
-  slug        String   @unique @db.VarChar(255)
-  description String?  @db.Text
-  website     String?  @db.VarChar(255)
-  email       String?  @db.VarChar(255)
-  phone       String?  @db.VarChar(50)
-  address     String?  @db.Text
-  logo        String?  @db.VarChar(500)
-  industry    String?  @db.VarChar(100)
-  size        String?  @db.VarChar(50)
-  is_active   Int      @default(1) @db.TinyInt
+  id          Int      @id @default(autoincrement())
+  user_id     Int      @unique
+  name        String
+  slug        String   @unique
+  description String?
+  website     String?
+  email       String?
+  phone       String?
+  address     String?
+  logo        String?
+  industry    String?
+  size        String?
+  is_active   Int      @default(1)
   created_at  DateTime @default(now())
   updated_at  DateTime @default(now()) @updatedAt
 
@@ -83,26 +77,26 @@ model companies {
 // Profiles
 // ============================================================
 model profiles {
-  id                 Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id            Int      @unique @db.UnsignedInt
-  full_name          String   @db.VarChar(255)
-  username           String?  @db.VarChar(50)
-  email              String?  @db.VarChar(255)
-  phone              String?  @db.VarChar(50)
-  location           String?  @db.VarChar(255)
-  bio                String?  @db.Text
-  skills             String?  @db.Text
-  education          String?  @db.Text
-  experience         String?  @db.Text
-  professional_title String?  @db.VarChar(255)
-  years_of_experience String? @db.VarChar(50)
-  employment_type    String?  @db.VarChar(50)
-  work_preference    String?  @db.VarChar(50)
-  expected_salary    String?  @db.VarChar(255)
-  career_objective   String?  @db.Text
-  profile_photo      String?  @db.VarChar(500)
-  cv_url             String?  @db.VarChar(500)
-  profile_completion Int      @default(0) @db.UnsignedInt
+  id                 Int      @id @default(autoincrement())
+  user_id            Int      @unique
+  full_name          String
+  username           String?
+  email              String?
+  phone              String?
+  location           String?
+  bio                String?
+  skills             String?
+  education          String?
+  experience         String?
+  professional_title String?
+  years_of_experience String?
+  employment_type    String?
+  work_preference    String?
+  expected_salary    String?
+  career_objective   String?
+  profile_photo      String?
+  cv_url             String?
+  profile_completion Int      @default(0)
   created_at         DateTime @default(now())
   updated_at         DateTime @default(now()) @updatedAt
 
@@ -113,29 +107,23 @@ model profiles {
 
 // ============================================================
 // Jobs
+//   status values: "active" | "closed" | "draft" | "archived"
 // ============================================================
-enum JobStatus {
-  active
-  closed
-  draft
-  archived
-}
-
 model jobs {
-  id              Int       @id @default(autoincrement()) @db.UnsignedInt
-  company_id      Int       @db.UnsignedInt
-  title           String    @db.VarChar(255)
-  description     String    @db.Text
-  location        String    @db.VarChar(255)
-  category        String?   @db.VarChar(100)
-  employment_type String    @db.VarChar(50)
-  salary          String?   @db.VarChar(255)
-  requirements    String?   @db.Text
-  status          JobStatus @default(active)
-  is_featured     Int       @default(0) @db.TinyInt
-  views_count     Int       @default(0) @db.UnsignedInt
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @default(now()) @updatedAt
+  id              Int      @id @default(autoincrement())
+  company_id      Int
+  title           String
+  description     String
+  location        String
+  category        String?
+  employment_type String
+  salary          String?
+  requirements    String?
+  status          String   @default("active")
+  is_featured     Int      @default(0)
+  views_count     Int      @default(0)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now()) @updatedAt
 
   company      companies       @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
   applications applications[]
@@ -152,26 +140,19 @@ model jobs {
 
 // ============================================================
 // Applications
+//   status values:
+//     "pending" | "reviewing" | "shortlisted" | "interview"
+//     "accepted" | "rejected" | "withdrawn"
 // ============================================================
-enum ApplicationStatus {
-  pending
-  reviewing
-  shortlisted
-  interview
-  accepted
-  rejected
-  withdrawn
-}
-
 model applications {
-  id           Int               @id @default(autoincrement()) @db.UnsignedInt
-  user_id      Int               @db.UnsignedInt
-  job_id       Int               @db.UnsignedInt
-  status       ApplicationStatus @default(pending)
-  cover_letter String?           @db.Text
-  cv_url       String?           @db.VarChar(500)
-  applied_at   DateTime          @default(now())
-  updated_at   DateTime          @default(now()) @updatedAt
+  id           Int      @id @default(autoincrement())
+  user_id      Int
+  job_id       Int
+  status       String   @default("pending")
+  cover_letter String?
+  cv_url       String?
+  applied_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
 
   job         jobs          @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
   user        users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -188,9 +169,9 @@ model applications {
 // Saved jobs
 // ============================================================
 model saved_jobs {
-  id       Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id  Int      @db.UnsignedInt
-  job_id   Int      @db.UnsignedInt
+  id       Int      @id @default(autoincrement())
+  user_id  Int
+  job_id   Int
   saved_at DateTime @default(now())
 
   job jobs @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -202,30 +183,24 @@ model saved_jobs {
 
 // ============================================================
 // Interviews
+//   status values: "scheduled" | "completed" | "cancelled" | "rescheduled"
 // ============================================================
-enum InterviewStatus {
-  scheduled
-  completed
-  cancelled
-  rescheduled
-}
-
 model interviews {
-  id             Int              @id @default(autoincrement()) @db.UnsignedInt
-  application_id Int              @db.UnsignedInt
-  job_id         Int              @db.UnsignedInt
-  user_id        Int              @db.UnsignedInt
-  company_id     Int              @db.UnsignedInt
-  title          String           @db.VarChar(255)
-  description    String?          @db.Text
+  id             Int      @id @default(autoincrement())
+  application_id Int
+  job_id         Int
+  user_id        Int
+  company_id     Int
+  title          String
+  description    String?
   scheduled_at   DateTime
-  duration       Int              @default(60) @db.UnsignedInt
-  location       String?          @db.VarChar(255)
-  meeting_link   String?          @db.VarChar(500)
-  status         InterviewStatus  @default(scheduled)
-  notes          String?          @db.Text
-  created_at     DateTime         @default(now())
-  updated_at     DateTime         @default(now()) @updatedAt
+  duration       Int      @default(60)
+  location       String?
+  meeting_link   String?
+  status         String   @default("scheduled")
+  notes          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
 
   application applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
   job         jobs         @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -244,13 +219,13 @@ model interviews {
 // Notifications
 // ============================================================
 model notifications {
-  id         Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id    Int      @db.UnsignedInt
-  type       String   @db.VarChar(100)
-  title      String   @db.VarChar(255)
-  message    String   @db.Text
-  data       Json?
-  is_read    Int      @default(0) @db.TinyInt
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  type       String
+  title      String
+  message    String
+  data       String?
+  is_read    Int      @default(0)
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
@@ -266,14 +241,14 @@ model notifications {
 // Auth tokens
 // ============================================================
 model auth_tokens {
-  id           Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id      Int      @db.UnsignedInt
-  token        String   @db.VarChar(500)
-  token_hash   String   @unique @db.VarChar(255)
+  id           Int      @id @default(autoincrement())
+  user_id      Int
+  token        String
+  token_hash   String   @unique
   expires_at   DateTime
   created_at   DateTime @default(now())
   last_used_at DateTime?
-  is_revoked   Int      @default(0) @db.TinyInt
+  is_revoked   Int      @default(0)
 
   user users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
 

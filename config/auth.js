@@ -241,6 +241,9 @@ async function getUserWithProfile(userId) {
 
 /**
  * Create a notification row.
+ *
+ * `data` is stored as a JSON string so it works with both SQLite
+ * (no native JSON type) and MySQL.
  */
 async function createNotification(userId, type, title, message, data = null) {
   try {
@@ -250,7 +253,7 @@ async function createNotification(userId, type, title, message, data = null) {
         type,
         title,
         message,
-        data: data ? data : undefined,
+        data: data !== null && data !== undefined ? JSON.stringify(data) : undefined,
       },
     });
     return true;

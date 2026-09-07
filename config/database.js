@@ -13,23 +13,27 @@
 const { PrismaClient } = require('@prisma/client');
 
 // Single shared Prisma client. Prisma manages its own connection pool.
-const prisma = new PrismaClient({
-  log:
-    process.env.PRISMA_LOG === 'true'
-      ? ['query', 'info', 'warn', 'error']
-      : ['warn', 'error'],
-});
+//
+// We deliberately set `log: []` so Prisma does not write its own
+// "Can't reach database server" warnings to the console. The boot
+// `testConnection()` produces a single, friendly message of our own
+// instead, and route-level errors are surfaced as JSON responses.
+const prisma = new PrismaClient({ log: [] });
 
 /**
  * Test the database connection.
+ *
+ * Never throws and never writes the raw Prisma error to the console —
+ * the caller (`server.js`) prints a single friendly line on failure so
+ * the boot log stays clean.
+ *
  * @returns {Promise<boolean>}
  */
 async function testConnection() {
   try {
     await prisma.$queryRaw`SELECT 1`;
     return true;
-  } catch (err) {
-    console.error('Database connection failed:', err.message);
+  } catch (_err) {
     return false;
   }
 }

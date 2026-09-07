@@ -29,6 +29,35 @@ const uploadsRoutes = require('./routes/uploads');
 
 const app = express();
 
+/**
+ * Wrap an async route handler so any thrown error (most commonly a
+ * Prisma "Can't reach database server" error) is converted to a
+ * clean JSON response instead of crashing the process.
+ */
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch((err) => {
+    const msg = (err && err.message) || 'Internal server error';
+    const isDbDown =
+      /Can't reach database server|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|PrismaClientInitializationError|P1001|P1002|P1017/i.test(
+        msg
+      );
+    if (isDbDown) {
+      console.warn('[DB] Database temporarily unavailable:', msg);
+      return res.status(503).json({
+        success: false,
+        message: 'Database temporarily unavailable. Please try again shortly.',
+      });
+    }
+    console.error('[Route error]', msg);
+    res
+      .status(err.status || 500)
+      .json({ success: false, message: err.message || 'Internal server error' });
+  });
+};
+
+// Make asyncHandler available to every route module.
+app.locals.asyncHandler = asyncHandler;
+
 // --- Global middleware -----------------------------------------------------
 
 app.use(corsMiddleware);
@@ -102,19 +131,36 @@ app.use((err, req, res, next) => {
 const PORT = parseInt(process.env.PORT || '5000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Safety net: prevent the process from crashing if an async route
+// somehow throws an unhandled error. Errors are logged and the server
+// keeps running so the frontend can show a friendly "try again" message.
+process.on('unhandledRejection', (reason) => {
+  const msg = (reason && reason.message) || String(reason);
+  console.warn('[unhandledRejection]', msg);
+});
+process.on('uncaughtException', (err) => {
+  console.warn('[uncaughtException]', (err && err.message) || err);
+});
+
 async function start() {
   const ok = await testConnection();
   if (!ok) {
-    console.error(
-      'Could not connect to MySQL. Check DB_HOST / DB_USER / DB_PASSWORD / DB_NAME in backend/.env.'
+    console.warn(
+      "⚠  Could not reach MySQL at DATABASE_URL. The server is still starting — requests that touch the DB will return a friendly 'Database temporarily unavailable' response until MySQL is reachable."
     );
-    // Don't hard-exit so Render logs surface the issue clearly.
+    console.warn(
+      '   Current DATABASE_URL: ' +
+        (process.env.DATABASE_URL || '(not set)')
+    );
   } else {
-    console.log('Database connection OK.');
+    console.log('✅ Database connection OK.');
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(`ACL Jobs API listening on http://${HOST}:${PORT}`);
+    console.log(`🚀 ACL Jobs API listening on http://${HOST}:${PORT}`);
+    console.log(
+      `   Database: ${process.env.DATABASE_URL ? 'configured via DATABASE_URL' : 'NOT CONFIGURED'}`
+    );
   });
 }
 
