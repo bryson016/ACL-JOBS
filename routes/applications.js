@@ -227,6 +227,63 @@ router.post(['/apply', '/apply.php'], async (req, res) => {
 });
 
 /**
+ * DELETE /api/applications/delete_application?id=...
+ * Allows a job seeker to permanently delete their own application.
+ */
+router.delete(['/delete_application', '/delete_application.php'], async (req, res) =>
+  deleteApplicationHandler(req, res)
+);
+router.post(['/delete_application', '/delete_application.php'], async (req, res) =>
+  deleteApplicationHandler(req, res)
+);
+
+async function deleteApplicationHandler(req, res) {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  // Accept id from query string or body (DELETE bodies are unreliable).
+  let applicationId = parseInt(req.query.id || '0', 10);
+  if (applicationId <= 0) {
+    const input = getInput(req);
+    applicationId = parseInt(input.id || '0', 10);
+  }
+  if (applicationId <= 0) {
+    return sendError(res, 'Application ID is required.', 400);
+  }
+
+  try {
+    const app = await prisma.applications.findUnique({
+      where: { id: applicationId },
+      select: { id: true, user_id: true, job_id: true, job: { select: { title: true } } },
+    });
+    if (!app) return sendError(res, 'Application not found.', 404);
+
+    // Only the owner (job seeker) can delete their application.
+    if (Number(app.user_id) !== Number(user.user_id)) {
+      return sendError(res, 'You do not have permission to delete this application.', 403);
+    }
+
+    // Remove any interviews tied to this application first.
+    await prisma.interviews.deleteMany({ where: { application_id: applicationId } });
+
+    await prisma.applications.delete({ where: { id: applicationId } });
+
+    await createNotification(
+      app.user_id,
+      'application_deleted',
+      'Application Deleted',
+      `Your application for "${app.job?.title || 'a job'}" has been deleted.`,
+      { job_id: app.job_id }
+    );
+
+    return sendSuccess(res, { deleted: true }, 'Application deleted successfully');
+  } catch (err) {
+    console.error('Delete application failed:', err.message);
+    return sendError(res, 'An error occurred while deleting the application.', 500);
+  }
+}
+
+/**
  * GET /api/applications/my_applications
  */
 router.get(['/my_applications', '/my_applications.php'], async (req, res) => {
