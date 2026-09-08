@@ -167,6 +167,18 @@ router.post(['/apply', '/apply.php'], async (req, res) => {
       },
     });
 
+    // Auto-save the applied job to the user's saved jobs list so it
+    // shows up in the Saved dashboard. Skip if already saved.
+    const alreadySaved = await prisma.saved_jobs.findFirst({
+      where: { user_id: Number(user.user_id), job_id: jobId },
+      select: { id: true },
+    });
+    if (!alreadySaved) {
+      await prisma.saved_jobs.create({
+        data: { user_id: Number(user.user_id), job_id: jobId },
+      });
+    }
+
     await createNotification(
       user.user_id,
       'application_submitted',
