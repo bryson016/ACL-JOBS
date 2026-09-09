@@ -190,12 +190,29 @@ async function requireRole(req, res, roles) {
 
 /**
  * Persist a generated token in auth_tokens for revocation/last-used tracking.
+ * If the exact same token already exists (e.g. two logins within the same
+ * second produce identical payloads), refresh it instead of failing on the
+ * unique token_hash constraint.
  */
 async function storeToken(userId, token) {
   const tokenHash = sha256(token);
   const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_SECONDS * 1000);
 
   try {
+    const existing = await prisma.auth_tokens.findUnique({
+      where: { token_hash: tokenHash },
+      select: { id: true },
+    });
+
+    if (existing) {
+      // Same token already stored: un-revoke and extend its expiry.
+      await prisma.auth_tokens.update({
+        where: { id: existing.id },
+        data: { is_revoked: 0, expires_at: expiresAt, last_used_at: new Date() },
+      });
+      return true;
+    }
+
     await prisma.auth_tokens.create({
       data: {
         user_id: Number(userId),

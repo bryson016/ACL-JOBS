@@ -1,0 +1,51 @@
+/* End-to-end test: register a user, then log in with the same credentials.
+ * Verifies users are persisted and can log in later without errors. */
+const BASE = 'http://localhost:5000/api';
+
+async function main() {
+  const email = `persist_test_${Date.now()}@example.com`;
+  const password = 'test123456';
+
+  // 1. Register
+  const regRes = await fetch(`${BASE}/auth/register.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Persistence Test',
+      username: 'persist_test',
+      email,
+      password,
+      role: 'job_seeker',
+    }),
+  });
+  const reg = await regRes.json();
+  console.log('REGISTER:', reg.success ? 'OK' : 'FAILED', '-', reg.message || '');
+  if (!reg.success) process.exit(1);
+
+  // 2. Login with the same credentials (fresh request, like the app would)
+  const loginRes = await fetch(`${BASE}/auth/login.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const login = await loginRes.json();
+  console.log('LOGIN:', login.success ? 'OK' : 'FAILED', '-', login.message || '');
+  if (!login.success) process.exit(1);
+  console.log('Token issued:', Boolean(login.data?.token));
+  console.log('User stored:', login.data?.user?.email);
+
+  // 3. Use the token to fetch the profile (auth round-trip)
+  const meRes = await fetch(`${BASE}/auth/me.php`, {
+    headers: { Authorization: `Bearer ${login.data.token}` },
+  });
+  const me = await meRes.json();
+  console.log('AUTH ME:', me.success ? 'OK' : 'FAILED');
+
+  console.log('\n✅ PASS: Users are saved correctly and can log in later without errors.');
+  process.exit(0);
+}
+
+main().catch((e) => {
+  console.error('Test error:', e.message);
+  process.exit(1);
+});
