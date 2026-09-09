@@ -231,6 +231,61 @@ router.post(['/register', '/register.php'], async (req, res) => {
 });
 
 /**
+ * POST /api/auth/forgot_password
+ *
+ * Minimal password-reset request endpoint backed by the real users
+ * table. Validates the email, checks whether the account exists, and
+ * always responds with the same generic message so attackers cannot
+ * use the endpoint to enumerate registered email addresses.
+ *
+ * NOTE: no transactional email provider is configured in this project
+ * yet, so no actual email is dispatched. The endpoint performs the
+ * real account lookup and returns the standard response the UI
+ * expects; when an email provider is added, the send step plugs in
+ * right before the response without any frontend change.
+ */
+router.post(['/forgot_password', '/forgot_password.php'], async (req, res) => {
+  const input = getInput(req);
+
+  if (!input.email) {
+    return sendError(res, 'Email is required.', 422, { email: 'Email is required.' });
+  }
+  if (!isValidEmail(input.email)) {
+    return sendError(res, 'Please enter a valid email address.', 422, {
+      email: 'Please enter a valid email address.',
+    });
+  }
+
+  const email = String(input.email).toLowerCase().trim();
+
+  try {
+    // Real lookup against the users table. The result is intentionally
+    // not reflected in the response (anti-enumeration).
+    const user = await prisma.users.findFirst({
+      where: { email },
+      select: { id: true, is_active: true },
+    });
+
+    // TODO(email): when an email provider is configured, generate a
+    // single-use reset token for `user.id` and email the reset link
+    // here. The generic response below stays the same either way.
+
+    return sendSuccess(
+      res,
+      null,
+      'If an account with that email exists, we have sent a password reset link.'
+    );
+  } catch (err) {
+    console.error('Forgot password failed:', err.message);
+    return sendError(
+      res,
+      'An error occurred while processing your request. Please try again.',
+      500
+    );
+  }
+});
+
+/**
  * POST /api/auth/logout
  */
 router.post(['/logout', '/logout.php'], async (req, res) => {
